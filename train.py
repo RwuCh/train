@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# import sys
-# sys.path.append(r'/Users/medoly/python')
-
-#from mysql import mysql
 import time
 import json
 import sys
@@ -12,12 +8,13 @@ from httpRequest import httpRequest
 
 class train:
 
-    sqlModel = None
     username = ''
     password = ''
     name12306 = ''
     password12306 = ''
     userToken = u''
+    userid = 0
+    expiretime = 0
     loginCapchat = ''
     fromstation = ''
     fromStationSign = ''
@@ -25,12 +22,11 @@ class train:
     toStationSign = ''
     date = ''
     codes = ''
+    passengername = ''
 
     def __init__(self):
         #初始化配置
         self.__initConfig()
-        #初始化数据库链接
-        #self.sqlModel = self.__sqlConnet()
 
     def register(self):
         #注册账号中
@@ -56,12 +52,6 @@ class train:
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(queryData).get()
         response = self.__jsonDecode(response)
         return response[u'list'] if response != False and response[u'status_code'] == 1 else False
-
-    #查处计划抢票列表
-    def __getPlans(self,userid):
-        sqlMap = [['userid','eq',userid]]
-        plans = self.sqlModel.table('plan').where(sqlMap).find()
-        return plans
 
     #下单购票
     def __createOrder(self, date, fromStation, toStation, secret):
@@ -113,13 +103,22 @@ class train:
             return response
         
     #设置token
-    def setUserToken(self, token): 
+    def setUserToken(self, token, userid, expiretime): 
         self.userToken = token
+        self.userid = userid
+        self.expiretime = expiretime
 
     #获取token
     def __getUserToken(self):
+        print '检测用户状态\n'
         if self.userToken != u'':
             return self.userToken
+        #获取缓存token
+        token = self.__getCacheToken()
+        if token != False:
+            self.setUserToken(token[0], token[2], token[1])
+            print '用户已登录\n'
+            return True
         #无token去登录
         token = self.__login()
         if token['status'] == False:
@@ -127,13 +126,35 @@ class train:
                 #自动注册
                 regResult = self.register()
                 if regResult == False:
-                    #print '请重新填写配置文件\n'
                     sys.exit('请重新填写配置文件\n')
                 #重新登录
                 token = self.__login()
-        self.setUserToken(token['token'])
-        return token
+                if token['status'] == False:
+                    sys.exit()
+            else:
+                sys.exit()
+        self.setUserToken(token['token'], token['userid'], token['expire_time'])
+        tokenList = [token['token'].encode("utf-8"),str(token['expire_time']),str(token['userid'])]
+        self.__cacheToken(tokenList)
+        return True
 
+    #写缓存
+    def __cacheToken(self,tokenList):
+        tokenStr = '\n'.join(tokenList)
+        fp = open('tokencache','w+')
+        fp.write(tokenStr)
+        fp.close()
+
+    def __getCacheToken(self):
+        fp = open('tokencache','r')
+        tokenStr = fp.read()
+        fp.close()
+        if '' == tokenStr:
+            return False
+        tokenList = tokenStr.split('\n')
+        return tokenList
+    
+    #headers
     def __getHeaders(self):
         headers = [u'userToken: ' + self.__getUserToken()]
         return headers
@@ -217,12 +238,13 @@ class train:
         rdata = {
                 'status' : True if response[u'status_code'] == 1 else False,
                 'code'   : response[u'status_code'],
-                'token'  : response[u'data'][u'token'] if response[u'status_code'] == 1 else ''
+                'token'  : response[u'data'][u'token'] if response[u'status_code'] == 1 else u'',
+                'userid' : response[u'data'][u'userid'] if response[u'status_code'] == 1 else u'0',
+                'expire_time' : response[u'data'][u'expire_time'] if response[u'status_code'] == 1 else u'0'
         }
         if response[u'status_code'] == 1:
             print '登录完毕\n'
             return  rdata
-            #return  response[u'data'][u'token']
         print u'登录失败，原因：' + response[u'status_msg'] + u'\n'
         return  rdata
 
@@ -246,20 +268,15 @@ class train:
                 capchatStatus = self.__checkCapchat()
             #12306登录
             self.__loginFor12306()
-        #登录12306
-        # plan = self.__getPlans(40)
-        # if plan is None:
-        #     sys.exit('没有计划任务')
-        #date = time.strftime("%Y-%m-%d", time.localtime(plan['date'])) 
-        #planFrom = plan['from']
-        #planTo = plan['to']
+        #选择乘客
+        self.__selectPassenger()
         date = self.date 
         planFrom = self.fromStationSign
         planTo = self.toStationSign
         num = 1
         while(num):
             print '====================第' + str(num) + '次尝试抢票=======================\n'
-            print '出发日期：' + date + ' 起始站：' + self.fromstation + ' <--> 终点站：' + self.tostation + '\n'
+            print '出发日期：' + date + ' 乘车人：' + self.passengername + ' 起始站：' + self.fromstation + ' <--> 终点站：' + self.tostation + '\n'
             num += 1
             tickets = self.__queryOrderTicket(date,planFrom,planTo)
             if tickets == False:
@@ -297,25 +314,12 @@ class train:
                         else:
                             print '很遗憾，未能完成订单\n'
 
-    #开启数据库链接
-    def __sqlConnet(self):
-        hostname = '55b6f5f9c1e2c.gz.cdb.myqcloud.com'
-        database = 'train'
-        username = 'cdb_outerroot'
-        password = 'ccw170165170165'
-        port = 11556
-        self.sqlModel = mysql(hostname,username,password,database,port);
-        return self.sqlModel
-    
-    #断开数据库链接
-    # def __del__(self):
-    #     self.sqlModel.close()
-
     #初始化配置
     def __initConfig(self):
         filename = 'config'
         fp = open(filename,'rw')
         configStr = fp.read()
+        fp.close()
         configList = configStr.split('\n')
         print '\n初始化配置中...\n'
         rulesObject = {
@@ -326,9 +330,10 @@ class train:
             'fromstation'   : 'fromstation不能为空，请完善配置文件',
             'tostation'     : 'tostation不能为空，请完善配置文件',
             'date'          : 'date格式不合格，请完善配置文件',
-            'codes'         : 'codes不能为空，请完善配置文件'
+            'codes'         : '',
+            'passengername' : ''
         }
-        for config in configList[:-1]:
+        for config in configList:
             itemList = config.split('=')
             if rulesObject.has_key(itemList[0]):
                 setattr(self, itemList[0], itemList[1])
@@ -341,7 +346,7 @@ class train:
     def __checkConfig(self,rules):
         for attr in rules:
             attrValue = getattr(self,attr)
-            if attrValue == '':
+            if attrValue == '' and attr != 'codes' and attr != 'passengername':
                 sys.exit(rules[attr])
             if (attr == 'username' and len(attrValue) < 6) or (attr == 'password' and len(attrValue) < 8):
                 sys.exit(rules[attr])
@@ -417,6 +422,65 @@ class train:
                 self.fromStationSign = selectItem[2]
                 self.fromstation = selectItem[1]
             print '\n' + stationTypeNames[stationType] + '站点解析完成: ' + selectItem[1] + ' 代号为：' + selectItem[2] + '\n'
+
+    #获取乘客列表
+    def __getPassengers(self):
+        print '正在读取乘客列表.....\n'
+        httpUrl = 'https://train.lvzhisha.com/train/passengers'
+        response = httpRequest().url(httpUrl).header(self.__getHeaders()).get()
+        response = self.__jsonDecode(response)
+        if response[u'status_code'] == 1:
+            print '乘客列表读取完成\n'
+            return  response[u'list']
+        print '乘客列表读取失败\n'
+        return False
+
+    #选择乘车人
+    def __selectPassenger(self):
+        if self.codes != '':
+            return True
+        passengers = self.__getPassengers()
+        if passengers == False:
+            sys.exit()
+        key = 0
+        for item in passengers:
+            key += 1
+            print u'%d  、%s' % (key,item[u'passenger_name']) 
+        while(True):
+            number = raw_input('\n请输入序号选择乘车人: ')
+            if number.isdigit() == False:
+                print '\n请输入数字!!!\n'
+                continue
+            number = int(number)
+            if number >= 1 and number <= key:
+                break
+            print '\n请输入正确的序号!!!\n'
+        print u'\n乘客选择完毕，乘车人为：' + passengers[number-1][u'passenger_name'] + u'\n'
+        
+        #写入文件
+        filename = 'config'
+        fp = open(filename,'r')
+        configStr = fp.read()
+        fp.close()
+        configList = configStr.split('\n')
+        for config in configList[:]:
+            #找到乘车人并覆盖
+            if 'passengername=' in config or 'codes=' in config or config == '':
+                configList.remove(config)
+            
+        #写入选择的乘车人
+        codes = passengers[number-1][u'code'].encode("utf-8")
+        passengername = passengers[number-1][u'passenger_name'].encode("utf-8")
+        self.codes = codes
+        self.passengername = passengername
+        configList.append('codes=' + codes)
+        configList.append('passengername=' + passengername) 
+        configStr = '\n'.join(configList)
+        fp = open(filename,'w+')
+        fp.write(configStr)
+        fp.close()
+
+
 
 train = train()
 train.go()
