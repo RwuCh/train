@@ -23,6 +23,8 @@ class train:
     date = ''
     codes = ''
     passengername = ''
+    host = 'https://train.lvzhisha.com'
+    cacheFilename = 'tokencache'
 
     def __init__(self):
         #初始化配置
@@ -32,7 +34,7 @@ class train:
         #注册账号中
         print '账号注册中.....\n'
         formData = {'username':self.username,'password':self.password,'nickname':self.username}
-        url = 'https://train.lvzhisha.com/register'
+        url = self.host + '/register'
         response = httpRequest().url(url).parameters(formData).post()
         response = self.__jsonDecode(response)
         if response[u'status_code'] == 1:
@@ -48,7 +50,7 @@ class train:
             'from' : fromStation,
             'to'   : toStation
         }
-        httpUrl = 'https://train.lvzhisha.com/train/leftTickets'
+        httpUrl = self.host + '/train/leftTickets'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(queryData).get()
         response = self.__jsonDecode(response)
         return response[u'list'] if response != False and response[u'status_code'] == 1 else False
@@ -62,7 +64,7 @@ class train:
             'to_station'      : toStation,
             'secret'          : secret
         }
-        httpUrl = 'https://train.lvzhisha.com/train/order/ticket'
+        httpUrl = self.host + '/train/order/ticket'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(formData).post()
         response = self.__jsonDecode(response)
         return response if response[u'status_code'] == 1 else False
@@ -73,7 +75,7 @@ class train:
             'passengCodes' : code,
             'randCode'     : '144,24'
         }
-        httpUrl = 'https://train.lvzhisha.com/train/order/check'
+        httpUrl = self.host + '/train/order/check'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(formData).post()
         response = self.__jsonDecode(response)
         rdata = { 
@@ -88,17 +90,28 @@ class train:
             'passengCodes' : code,
             'randCode'     : '144,24'
         }
-        httpUrl = 'https://train.lvzhisha.com/train/order/confirmOrder'
+        httpUrl = self.host + '/train/order/confirmOrder'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(formData).post()
         response = self.__jsonDecode(response)
         return True if response[u'status_code'] == 1 else False
+
+    #缓存过期删除
+    def __deleteCacheToken(self):
+        fp = open(self.cacheFilename,'w+')
+        fp.write('')
+        fp.close()
 
     #解析json
     def __jsonDecode(self,jsonStr):
         try:
             response = json.loads(jsonStr)
+            if response[u'status_code'] != 1 and (response[u'status_code'] == 100 or response[u'status_code'] == u'100' or response[u'status_code'] == '100'):
+                self.__deleteCacheToken()
+                raise NameError('登录token过期，请重新执行脚本')
+        except NameError,msg:
+            sys.exit(msg)
         except:
-            return False
+            return {u'status_code':'0'}
         else:
             return response
         
@@ -110,8 +123,8 @@ class train:
 
     #获取token
     def __getUserToken(self):
-        print '检测用户状态\n'
-        if self.userToken != u'':
+        #print '检测用户状态\n'
+        if self.userToken != u'' or self.userToken != '':
             return self.userToken
         #获取缓存token
         token = self.__getCacheToken()
@@ -141,18 +154,21 @@ class train:
     #写缓存
     def __cacheToken(self,tokenList):
         tokenStr = '\n'.join(tokenList)
-        fp = open('tokencache','w+')
+        fp = open(self.cacheFilename,'w+')
         fp.write(tokenStr)
         fp.close()
 
     def __getCacheToken(self):
-        fp = open('tokencache','r')
-        tokenStr = fp.read()
-        fp.close()
-        if '' == tokenStr:
+        try:
+            fp = open(self.cacheFilename,'r')
+            tokenStr = fp.read()
+            fp.close()
+            if '' == tokenStr:
+                return False
+            tokenList = tokenStr.split('\n')
+            return tokenList
+        except:
             return False
-        tokenList = tokenStr.split('\n')
-        return tokenList
     
     #headers
     def __getHeaders(self):
@@ -165,7 +181,7 @@ class train:
         formData = {
             'randCode' : self.loginCapchat
         }
-        httpUrl = 'https://train.lvzhisha.com/train/checkCapchat/login'
+        httpUrl = self.host + '/train/checkCapchat/login'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(formData).get()
         response = self.__jsonDecode(response)
         if response[u'status_code'] == 1:
@@ -177,7 +193,7 @@ class train:
     #生成验证码图片链接
     def __capchatUrlFor12306(self):
         print '↓↓↓↓↓↓↓↓↓↓↓请在浏览器打开以下链接生成验证码↓↓↓↓↓↓↓↓↓↓↓↓\n'
-        print 'https://train.lvzhisha.com/train/40/capchat/login\n'
+        print self.host + '/train/%d/capchat/login\n' % (int(self.userid))
         print '↑↑↑↑↑↑↑↑↑↑↑请在浏览中打开上面链接以获得验证码坐标↑↑↑↑↑↑\n'
     
     #获取输入的验证码坐标
@@ -188,7 +204,7 @@ class train:
     #生成cookie
     def __createCookie(self):
         print '正在生成cookie...\n'
-        httpUrl = 'https://train.lvzhisha.com/train/cookie'
+        httpUrl = self.host + '/train/cookie'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).post()
         response = self.__jsonDecode(response)
         if response[u'status_code'] == 1:
@@ -199,7 +215,7 @@ class train:
     #检测用在12306是否登录
     def __checkLoginFor12306(self):
         print '检测12306账户登录状态....\n'
-        httpUrl = 'https://train.lvzhisha.com/train/loginStatus'
+        httpUrl = self.host + '/train/loginStatus'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).get()
         response = self.__jsonDecode(response)
         if response[u'status_code'] == 1 and response[u'data'][u'status']:
@@ -216,7 +232,7 @@ class train:
             'password' : self.password12306,
             'randCode' : self.loginCapchat
         }
-        httpUrl = 'https://train.lvzhisha.com/train/login'
+        httpUrl = self.host + '/train/login'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(formData).post()
         response = self.__jsonDecode(response)
         if response[u'status_code'] == 1:
@@ -232,7 +248,7 @@ class train:
             'username' : self.username,
             'password' : self.password
         }
-        httpUrl = 'https://train.lvzhisha.com/login'
+        httpUrl = self.host + '/login'
         response = httpRequest().url(httpUrl).parameters(formData).post()
         response = self.__jsonDecode(response)
         rdata = {
@@ -426,7 +442,7 @@ class train:
     #获取乘客列表
     def __getPassengers(self):
         print '正在读取乘客列表.....\n'
-        httpUrl = 'https://train.lvzhisha.com/train/passengers'
+        httpUrl = self.host + '/train/passengers'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).get()
         response = self.__jsonDecode(response)
         if response[u'status_code'] == 1:
