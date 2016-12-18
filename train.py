@@ -333,7 +333,7 @@ class train:
     #初始化配置
     def __initConfig(self):
         filename = 'config'
-        fp = open(filename,'rw')
+        fp = open(filename,'r')
         configStr = fp.read()
         fp.close()
         configList = configStr.split('\n')
@@ -385,7 +385,7 @@ class train:
     def __decodeStation(self):
         print '正在解析站点...\n'
         filename = 'stations'
-        fp = open(filename,'rw')
+        fp = open(filename,'r')
         stationsStr = fp.read()
         stationsList = stationsStr.split('@')
         fromStationList = []

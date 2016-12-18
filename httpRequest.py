@@ -24,6 +24,8 @@ class httpRequest:
         self.curl.setopt(pycurl.CONNECTTIMEOUT, self.connecttimeout)
         self.curl.setopt(pycurl.TIMEOUT, self.timeout)
         self.curl.setopt(pycurl.HEADER, False)
+        self.curl.setopt(pycurl.SSL_VERIFYPEER, 0)
+        self.curl.setopt(pycurl.SSL_VERIFYHOST, 0)
 
     #post
     def post(self):
