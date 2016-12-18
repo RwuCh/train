@@ -131,7 +131,7 @@ class train:
         if token != False:
             self.setUserToken(token[0], token[2], token[1])
             print '用户已登录\n'
-            return True
+            return token[0]
         #无token去登录
         token = self.__login()
         if token['status'] == False:
@@ -149,7 +149,7 @@ class train:
         self.setUserToken(token['token'], token['userid'], token['expire_time'])
         tokenList = [token['token'].encode("utf-8"),str(token['expire_time']),str(token['userid'])]
         self.__cacheToken(tokenList)
-        return True
+        return token['token']
 
     #写缓存
     def __cacheToken(self,tokenList):
