@@ -25,6 +25,7 @@ class train:
     passengername = ''
     host = u'https://train.lvzhisha.com'
     cacheFilename = 'tokencache'
+    email = ''
 
     def __init__(self):
         #初始化配置
@@ -60,7 +61,7 @@ class train:
         formData = {
             'train_date'      : date,
             'from_station'    : fromStation,
-            'back_train_date' : fromStation,
+            'back_train_date' : date,
             'to_station'      : toStation,
             'secret'          : secret
         }
@@ -328,7 +329,10 @@ class train:
                         submitResult = self.__submitOrder(self.codes)
                         #print submitResult
                         if submitResult:
-                            sys.exit(u'恭喜你，抢到票了，快去付钱吧!!!!')
+                            #发送邮件
+                            print u'恭喜你，抢到票了，快去付钱吧!!!!\n'
+                            self.__sendEmail()
+                            sys.exit()
                         else:
                             print u'很遗憾，未能完成订单\n'
 
@@ -349,7 +353,8 @@ class train:
             'tostation'     : u'tostation不能为空，请完善配置文件',
             'date'          : u'date格式不合格，请完善配置文件',
             'codes'         : u'',
-            'passengername' : u''
+            'passengername' : u'',
+            'email'         : ''
         }
         for config in configList:
             itemList = config.split('=')
@@ -362,9 +367,10 @@ class train:
 
     #检测配置项是否满足
     def __checkConfig(self,rules):
+        notCheckList = ['codes','passengername','email']
         for attr in rules:
             attrValue = getattr(self,attr)
-            if attrValue == '' and attr != 'codes' and attr != 'passengername':
+            if attrValue == '' and attr not in notCheckList:
                 sys.exit(rules[attr])
             if (attr == 'username' and len(attrValue) < 6) or (attr == 'password' and len(attrValue) < 8):
                 sys.exit(rules[attr])
@@ -500,6 +506,25 @@ class train:
         fp.write(configStr)
         fp.close()
 
+    #订票成功发送邮件
+    def __sendEmail(self):
+        if self.email == '':
+            return False
+        print (u'通知邮件发送中....\n')
+        content = '已成功抢到 ' + self.date + ' 从 ' + self.fromstation + ' 开往 ' + self.tostation + '的车票,赶快去付款吧!' 
+        formData = {
+            'email'   : self.email,
+            'content' : content
+        }
+        httpUrl = self.host + u'/train/email'
+        response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(formData).post()
+        response = self.__jsonDecode(response)
+        if response != False and response[u'status_code'] == 1:
+            print u'通知邮件发送成功,注意查收\n'
+            return True
+        else:
+            print u'通知邮件发送失败\n'
+            return False
 
 
 train = train()

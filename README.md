@@ -17,6 +17,10 @@ password12306=xxx
 
 xxx替换为12306登录的密码
 
+email=xxxx
+
+xxxx替换为接收抢票成功的通知
+
 fromstation=广州南 
 
 出发站点
