@@ -308,7 +308,7 @@ class train:
                         'wz_num':[t[u'wz_num'],u'无座']
                         }
                 for seat in seatNum:
-                    if seatNum[seat][0] == u'有':
+                    if seatNum[seat][0] == u'有' or seatNum[seat][0].isdigit():
                         print u'查询到车票，车次为：' + t[u'station_train_code'] + u' ' + seatNum[seat][1] + u' 出发时间：' + t[u'start_time'] + u' 到站时间：' + t[u'arrive_time'] + u'\n'
                         print u'正在努力下单中...\n'
                         #有票下单
