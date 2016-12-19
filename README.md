@@ -19,7 +19,7 @@ xxx替换为12306登录的密码
 
 email=xxxx
 
-xxxx替换为接收抢票成功的通知
+xxxx替换为接收抢票成功的通知邮箱地址
 
 fromstation=广州南 
 
