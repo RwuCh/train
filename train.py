@@ -21,7 +21,9 @@ class train:
     tostation = ''
     toStationSign = ''
     date = ''
-    codes = ''
+    seatcode = ''
+    traincode = ''
+    passengercode = ''
     passengername = ''
     host = u'https://train.lvzhisha.com'
     cacheFilename = 'tokencache'
@@ -112,7 +114,7 @@ class train:
         except NameError,msg:
             sys.exit(u'登录token过期，请重新执行脚本')
         except:
-            return {u'status_code':u'0'}
+            return {u'status_code':u'0',u'status_msg':u'未知错误'}
         else:
             return response
         
@@ -177,15 +179,34 @@ class train:
         return headers
 
     #检测登录验证码
-    def __checkCapchat(self):
+    def __checkCapchat(self, capchatNumber):
         print u'\n正在校验验登录验证码...\n'
+        if capchatNumber == '' or capchatNumber == None:
+            return False
+        #解析坐标
+        coordinates = [
+                '23,34',
+                '135,35',
+                '190,35',
+                '255,35',
+                '23,135',
+                '135,135',
+                '190,135',
+                '255,190'
+        ]
+        capchatList = str(capchatNumber).split(',')
+        capchatStr = ''
+        for x in capchatList:
+            capchatStr += coordinates[int(x)-1] + ','
+
         formData = {
-            'randCode' : self.loginCapchat
+            'randCode' : capchatStr[:-1]
         }
         httpUrl = self.host + u'/train/checkCapchat/login'
         response = httpRequest().url(httpUrl).header(self.__getHeaders()).parameters(formData).get()
         response = self.__jsonDecode(response)
         if response[u'status_code'] == 1:
+            self.loginCapchat = capchatStr
             print u'登录验证码校验通过\n'
             return  True
         print u'登录验证码不正确\n'
@@ -199,10 +220,9 @@ class train:
     
     #获取输入的验证码坐标
     def getCapchatCoordinate(self):
-        #ds = raw_input('请输入验证码坐标：').decode(sys.stdin.encoding)
-        print u'↓↓↓↓↓↓↓↓↓↓↓请输入验证码坐标↓↓↓↓↓↓↓↓↓↓↓\n'
+        print u'\n↓↓↓↓↓↓↓↓↓↓↓请输入验证码序号，多个序号用逗号分隔↓↓↓↓↓↓↓↓↓↓↓\n'
         ds = raw_input('capchat is : ')
-        self.loginCapchat = ds
+        return ds
 
     #生成cookie
     def __createCookie(self):
@@ -282,9 +302,9 @@ class train:
             capchatStatus = False
             while(capchatStatus == False):
                 #获取验证码坐标
-                self.getCapchatCoordinate()
+                capchatNumber = self.getCapchatCoordinate()
                 #验证验证码
-                capchatStatus = self.__checkCapchat()
+                capchatStatus = self.__checkCapchat(capchatNumber)
             #12306登录
             self.__loginFor12306()
         #选择乘客
@@ -292,8 +312,12 @@ class train:
         date = self.date 
         planFrom = self.fromStationSign
         planTo = self.toStationSign
+        #解析出选定的车次
+        selectTrainCode = self.__trainCodeDecode()
+        #解析出选定的座次
+        selectSeat = self.__seatDecode()
         num = 1
-        while(num):
+        while(True):
             print u'====================第' + str(num) + u'次尝试抢票=======================\n'
             print u'出发日期：' + unicode(date,'utf-8') + u' 乘车人：' + unicode(self.passengername,'utf-8') + u' 起始站：' + unicode(self.fromstation,'utf-8') + u' <--> 终点站：' + unicode(self.tostation,'utf-8') + u'\n'
             num += 1
@@ -303,38 +327,39 @@ class train:
                 continue
             for item in tickets:
                 t = item['queryLeftNewDTO']
-                seatNum = {
-                        'zy_num':[t[u'zy_num'],u'一等座'],
-                        'ze_num':[t[u'ze_num'],u'二等座'],
-                        'wz_num':[t[u'wz_num'],u'无座']
-                        }
+                #筛选车次
+                if t['station_train_code'][0:1] not in selectTrainCode.keys():
+                    continue
+                #筛选座次
+                seatNum = [x + [t[x[0]]] for x in selectSeat]
                 for seat in seatNum:
-                    if seatNum[seat][0] == u'有' or seatNum[seat][0].isdigit():
-                        print u'查询到车票，车次为：' + t[u'station_train_code'] + u' ' + seatNum[seat][1] + u' 出发时间：' + t[u'start_time'] + u' 到站时间：' + t[u'arrive_time'] + u'\n'
-                        print u'正在努力下单中...\n'
-                        #有票下单
-                        orderResult = self.__createOrder(date,planFrom,planTo,item[u'secretStr'])
-                        if orderResult == False:
-                            print u'很遗憾提交订单失败了0.0\n'
-                            continue
-                        print u'提交订单成功，进入订单验证....\n' 
-                        #检测订单状态
-                        checkResult = self.__checkOrder(self.codes)
-                        #print checkResult
-                        if checkResult['status'] == False:
-                            print u'很遗憾订单验证失败了,原因：' + checkResult['msg'] + u'\n'
-                            continue
-                        print u'最后一步了，正在努力完成订单....\n'
-                        #提交购票订单
-                        submitResult = self.__submitOrder(self.codes)
-                        #print submitResult
-                        if submitResult:
-                            #发送邮件
-                            print u'恭喜你，抢到票了，快去付钱吧!!!!\n'
-                            self.__sendEmail()
-                            sys.exit()
-                        else:
-                            print u'很遗憾，未能完成订单\n'
+                    if (seat[2] == u'有' or seat[2].isdigit()) == False:
+                        continue
+                    print u'查询到车票，车次为：' + t[u'station_train_code'] + u' ' + seat[1] + u' 出发时间：' + t[u'start_time'] + u' 到站时间：' + t[u'arrive_time'] + u'\n'
+                    print u'正在努力下单中...\n'
+                    #有票下单
+                    orderResult = self.__createOrder(date,planFrom,planTo,item[u'secretStr'])
+                    if orderResult == False:
+                        print u'很遗憾提交订单失败了0.0\n'
+                        continue
+                    print u'提交订单成功，进入订单验证....\n' 
+                    #检测订单状态
+                    checkResult = self.__checkOrder(self.passengercode)
+                    #print checkResult
+                    if checkResult['status'] == False:
+                        print u'很遗憾订单验证失败了,原因：' + checkResult['msg'] + u'\n'
+                        continue
+                    print u'最后一步了，正在努力完成订单....\n'
+                    #提交购票订单
+                    submitResult = self.__submitOrder(self.passengercode)
+                    #print submitResult
+                    if submitResult:
+                        #发送邮件
+                        print u'恭喜你，抢到票了，快去付钱吧!!!!\n'
+                        self.__sendEmail()
+                        sys.exit()
+                    else:
+                        print u'很遗憾，未能完成订单\n'
 
     #初始化配置
     def __initConfig(self):
@@ -352,9 +377,12 @@ class train:
             'fromstation'   : u'fromstation不能为空，请完善配置文件',
             'tostation'     : u'tostation不能为空，请完善配置文件',
             'date'          : u'date格式不合格，请完善配置文件',
-            'codes'         : u'',
+            'seatcode'      : u'',
+            'traincode'     : u'',
+            'passengercode' : u'',
             'passengername' : u'',
-            'email'         : ''
+            'email'         : u''
+            
         }
         for config in configList:
             itemList = config.split('=')
@@ -367,7 +395,7 @@ class train:
 
     #检测配置项是否满足
     def __checkConfig(self,rules):
-        notCheckList = ['codes','passengername','email']
+        notCheckList = ['passengercode','passengername','email','traincode','seatcode']
         for attr in rules:
             attrValue = getattr(self,attr)
             if attrValue == '' and attr not in notCheckList:
@@ -380,6 +408,43 @@ class train:
                     sys.exit(rules[attr])
 
         self.__decodeStation()
+
+    #解析坐席
+    def __seatDecode(self):
+        print (u'正在解析座次...\n')
+        seatNum = [ 
+            ['zy_num',u'一等座'],
+            ['ze_num',u'二等座'],
+            ['wz_num',u'无座'],
+            ['gr_num',u'高级软卧'],
+            ['rw_num',u'软卧'],
+            ['rz_num',u'软座'],
+            ['tz_num',u'特等座'],
+            ['yw_num',u'硬卧'],
+            ['yz_num',u'硬座'],
+            ['swz_num',u'商务座']
+        ]
+        selectSeat = [seatNum[int(i)-1] for i in self.seatcode.split(',')] if self.seatcode != '' else seatNum
+        selectSeatStr = ' '.join([x[1] for x in selectSeat])
+        print u'座次解析完毕,选择的座次类型为：' + selectSeatStr + '\n'
+        return selectSeat
+
+    #解析车次
+    def __trainCodeDecode(self):
+        print (u'正在解析车次...\n')
+        trainCode = {
+            'T':u'特快',
+            'Z':u'直达',
+            'K':u'快速',
+            'D':u'动车',
+            'G':u'高铁',
+            'C':u'城际'
+        }
+        selectTrainCode = {code:trainCode[code] for code in self.traincode.split(',')} if self.traincode != '' else trainCode
+        print (u'车次选择完毕,选择的车次类型为： %s \n' % (' '.join(selectTrainCode.values())))
+        
+        return selectTrainCode
+
 
     #判断是否是一个有效的日期字符串
     def __isValidDate(self,dateStr):
@@ -462,7 +527,7 @@ class train:
 
     #选择乘车人
     def __selectPassenger(self):
-        if self.codes != '':
+        if self.passengercode != '':
             return True
         passengers = self.__getPassengers()
         if passengers == False:
@@ -491,15 +556,15 @@ class train:
         configList = configStr.split('\n')
         for config in configList[:]:
             #找到乘车人并覆盖
-            if 'passengername=' in config or 'codes=' in config or config == '':
+            if 'passengername=' in config or 'passengercode=' in config or config == '':
                 configList.remove(config)
             
         #写入选择的乘车人
-        codes = passengers[number-1][u'code'].encode("utf-8")
+        passengercode = passengers[number-1][u'code'].encode("utf-8")
         passengername = passengers[number-1][u'passenger_name'].encode("utf-8")
-        self.codes = codes
+        self.passengercode = passengercode
         self.passengername = passengername
-        configList.append('codes=' + codes)
+        configList.append('passengercode=' + passengercode)
         configList.append('passengername=' + passengername) 
         configStr = '\n'.join(configList)
         fp = open(filename,'w+')
